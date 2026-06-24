@@ -3,6 +3,7 @@ from matplotlib.animation import FuncAnimation
 import numpy as np
 from matplotlib.patches import Circle, Polygon
 from matplotlib.widgets import Button
+from bandit import Bandit
 
 class Rocket:
     def __init__(self):
@@ -13,13 +14,13 @@ class Rocket:
         self.fig.set_size_inches(10, 10)
 
         with plt.ioff():
-            self.ax = plt.axes([0.1, 0.25, 0.8, 0.70], xlim=(0, 10), ylim=(0, 30))         # type: ignore
+            self.ax = plt.axes([0.1, 0.25, 0.8, 0.70], xlim=(0, 10), ylim=(0, 20))         # type: ignore
 
         vertices = np.array([[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]])
         triangle = Polygon(vertices.tolist(), fc='black', zorder=3)
         
 
-        self.rocket = {"shape": triangle,"pos": np.array([2.0, 1.0]), "vel": np.array([0.0, 0.0])}  
+        self.rocket = {"shape": triangle,"pos": np.array([2.0, 1.0]), "vel": np.array([0.0, 0.0]), "angle" : 0.0, "angular_vel":0.0}  
 
 
         self.landing_pad = np.array([6, 1])
@@ -46,6 +47,10 @@ class Rocket:
     def key_press(self, event):
         if event.key == 'w':
             self.thrusting = True
+        elif event.key == 'd':
+            self.rocket["angular_vel"] -= 0.01
+        elif event.key == 'a':
+            self.rocket["angular_vel"] += 0.01
 
     def key_release(self, event):
         if event.key == 'w':
@@ -97,40 +102,34 @@ class Rocket:
                 future_vel = np.array([0.0, 0.0])
 
         return crash_pos
+    
+    def thrust(self, angle):
+        thrust_x = -np.sin(angle) * self.thrust_speed
+        thrust_y = np.cos(angle) * self.thrust_speed
+        self.rocket["vel"] += np.array([thrust_x, thrust_y])
 
     def step(self):
+        self.rocket["angle"] += self.rocket["angular_vel"]
+        self.rocket["angular_vel"] *= 0.98
         if self.thrusting:
-            self.rocket["vel"] += np.array([0.001, self.thrust_speed])
+            self.thrust(self.rocket["angle"])
 
-        if self.landing and not self.landing_burn:
-            self.landing_burn = self.land()
-        
-        elif self.landing_burn:
-            if self.rocket["vel"][1] >= 0:
-                self.landing_burn = False
-        
-        if self.landing_burn:
-            print(self.lookahead()) 
+        if self.landing:
+            x_error = self.landing_pad[0] - self.rocket["pos"][0]
+            goal_x = x_error * 0.01 - self.rocket["vel"][0] * 0.1
 
-            x = self.rocket["pos"][0]
-            y = self.rocket["pos"][1]
-            vel_y = self.rocket["vel"][1]
-            
-            burn_time = (y - 1.0) / abs(vel_y) if abs(vel_y) > 0.001 else 1.0
-            change = (self.landing_pad[0] - x) / burn_time
+            k = 5
+            goal_angle = -goal_x * k
 
-            x_change = (change - self.rocket["vel"][0]) * 0.1
-            y_change = self.thrust_speed
+            # limit angle 
+            goal_angle = np.clip(goal_angle, -0.4, 0.4)
 
-            self.rocket["vel"] += np.array([x_change, y_change])
+            angle_error = goal_angle - self.rocket["angle"]
+            self.rocket["angular_vel"] += (0.02 * angle_error- 0.2 * self.rocket["angular_vel"])
 
-            angle = np.arctan2(y_change, x_change) - np.pi / 2
-        else:
-            mod_v = np.linalg.norm(self.rocket["vel"])
-            if mod_v > 0.05: 
-                angle = np.arctan2(self.rocket["vel"][1], self.rocket["vel"][0]) - np.pi / 2
-            else:
-                angle = 0.0
+        if self.land():
+            self.thrust(self.rocket["angle"])
+
 
         # update gravity and position
         self.rocket["vel"] += np.array([0.0, -0.01])
@@ -143,7 +142,7 @@ class Rocket:
             self.rocket["pos"][1] = 1.0
             self.rocket["vel"] = np.array([0.0, 0.0])
 
-        return angle
+        
 
 
     def rotate(self, pos, size, angle):
@@ -156,8 +155,9 @@ class Rocket:
         return new_vertices
 
     def animate(self, j):
-        angle = self.step()
-        new_vertices = self.rotate(self.rocket["pos"], 0.15, angle)
+        self.step()
+        
+        new_vertices = self.rotate(self.rocket["pos"], 0.15, self.rocket["angle"])
         self.rocket["shape"].set_xy(new_vertices)
         return []
     
