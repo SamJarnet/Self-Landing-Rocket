@@ -11,7 +11,7 @@ class Rocket:
         with plt.ioff():
             self.fig = plt.figure()
         self.fig.set_dpi(100)
-        self.fig.set_size_inches(10, 10)
+        self.fig.set_size_inches(10, 20)
 
         with plt.ioff():
             self.ax = plt.axes([0.1, 0.25, 0.8, 0.70], xlim=(0, 10), ylim=(0, 20))         # type: ignore
@@ -37,12 +37,23 @@ class Rocket:
         self.fig.canvas.mpl_connect('key_release_event', self.key_release)
         self.landing = False
         self.landing_burn = False
+
+        # bandit-controlled landing mode
+        self.bandit = None
+        self.bandit_Q = None
+        self.bandit_landing = False
+        self.bandit_train_episodes = 15000
+
         self.setup_widgets() 
     
     def setup_widgets(self): 
         land = plt.axes([0.15, 0.15, 0.1, 0.04]) # type: ignore 
         self.land_button = Button(land, 'land', hovercolor='0.775') 
         self.land_button.on_clicked(self.set_land)
+
+        bandit_land = plt.axes([0.30, 0.15, 0.18, 0.04]) # type: ignore
+        self.bandit_land_button = Button(bandit_land, 'bandit land', hovercolor='0.775')
+        self.bandit_land_button.on_clicked(self.set_bandit_land)
 
     def key_press(self, event):
         if event.key == 'w':
@@ -58,7 +69,18 @@ class Rocket:
 
 
     def set_land(self, event):
+        self.bandit_landing = False
         self.landing = True
+
+    def set_bandit_land(self, event):
+        self.landing = False
+
+        if self.bandit_Q is None:
+            print("training bandit...")
+            self.train_bandit()
+            print("training complete")
+
+        self.bandit_landing = True
 
 
     def init(self):
@@ -66,6 +88,21 @@ class Rocket:
 
         return []
 
+
+    def train_bandit(self):
+        self.bandit = Bandit(self)
+        self.bandit_Q = self.bandit.learn(self.bandit_train_episodes)
+
+        self.rocket["pos"] = np.array([2.0, 1.0])
+        self.rocket["vel"] = np.array([0.0, 0.0])
+        self.rocket["angle"] = 0.0
+        self.rocket["angular_vel"] = 0.0
+
+    def bandit_action(self):
+        state = self.bandit.get_state()
+        if state not in self.bandit_Q:
+            return 0
+        return int(np.argmax(self.bandit_Q[state]))
 
     def land(self):
         height = self.rocket["pos"][1] - 1.0
@@ -109,6 +146,13 @@ class Rocket:
         self.rocket["vel"] += np.array([thrust_x, thrust_y])
 
     def step(self):
+        if self.bandit_landing:
+            action = self.bandit_action()
+            _, _, done = self.bandit.step(action)
+            if done:
+                self.bandit_landing = False
+            return
+
         self.rocket["angle"] += self.rocket["angular_vel"]
         self.rocket["angular_vel"] *= 0.98
         if self.thrusting:
@@ -127,7 +171,7 @@ class Rocket:
             angle_error = goal_angle - self.rocket["angle"]
             self.rocket["angular_vel"] += (0.02 * angle_error- 0.2 * self.rocket["angular_vel"])
 
-        if self.land():
+        if self.land() and self.landing:
             self.thrust(self.rocket["angle"])
 
 
