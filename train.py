@@ -38,11 +38,11 @@ class ReplayMemory(object):
 
 
 
-BATCH_SIZE = 256
+BATCH_SIZE = 128
 GAMMA = 0.99
 EPS_START = 0.9
 EPS_END = 0.01
-EPS_DECAY = 100000
+EPS_DECAY = 400000
 TAU = 0.005
 LR = 3e-4
 
@@ -58,7 +58,7 @@ target_net = RocketNetwork(n_observations, n_actions).to(device)
 target_net.load_state_dict(policy_net.state_dict())
 
 optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
-memory = ReplayMemory(10000)
+memory = ReplayMemory(100000)
 
 
 steps_done = 0
@@ -88,7 +88,6 @@ def optimize_model():
     batch = Transition(*zip(*transitions))
 
     # Compute a mask of non-final states and concatenate the batch elements
-    # (a final state would've been the one after which simulation ended)
     non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
                                           batch.next_state)), device=device, dtype=torch.bool)
     non_final_next_states = torch.cat([s for s in batch.next_state
@@ -102,11 +101,12 @@ def optimize_model():
     next_state_values = torch.zeros(BATCH_SIZE, device=device)
     with torch.no_grad():
         next_state_values[non_final_mask] = target_net(non_final_next_states).max(1).values
+        
     # Compute the expected Q values
     expected_state_action_values = (next_state_values * GAMMA) + reward_batch
 
     # Compute Huber loss
-    criterion = nn.SmoothL1Loss()
+    criterion = nn.MSELoss()
     loss = criterion(state_action_values, expected_state_action_values.unsqueeze(1))
 
     # Optimize the model
@@ -118,7 +118,7 @@ def optimize_model():
 
 
 if torch.cuda.is_available() or torch.backends.mps.is_available():
-    num_episodes = 500
+    num_episodes = 5000
 else:
     num_episodes = 50
 
@@ -132,11 +132,11 @@ for i_episode in range(num_episodes):
     for t in count():
         action = select_action(state)
         observation, reward, terminated, truncated, _ = env.step(action.item())
-        reward = torch.tensor([reward], device=device)
+        reward = torch.tensor([reward/100.0], device=device)
         total_reward += reward.item()
         done = terminated or truncated
 
-        if terminated or truncated:
+        if terminated:
             next_state = None
         else:
             next_state = torch.tensor(observation, dtype=torch.float32, device=device).unsqueeze(0)
@@ -153,15 +153,15 @@ for i_episode in range(num_episodes):
 
         # Soft update of the target network's weights
         # θ′ ← τ θ + (1 −τ )θ′
-        target_net_state_dict = target_net.state_dict()
-        policy_net_state_dict = policy_net.state_dict()
-        for key in policy_net_state_dict:
-            target_net_state_dict[key] = policy_net_state_dict[key]*TAU + target_net_state_dict[key]*(1-TAU)
-        target_net.load_state_dict(target_net_state_dict)
+            target_net_state_dict = target_net.state_dict()
+            policy_net_state_dict = policy_net.state_dict()
+            for key in policy_net_state_dict:
+                target_net_state_dict[key] = policy_net_state_dict[key]*TAU + target_net_state_dict[key]*(1-TAU)
+            target_net.load_state_dict(target_net_state_dict)
 
         if done:
             if i_episode % 20 == 0:
-                print(f"Episode {i_episode + 1:4d} | Reward: {total_reward:.2f}")
+                print(f"Episode {i_episode + 1:4d} | Reward: {total_reward:.2f} | terminated: {terminated} | truncated: {truncated}")
             break
 
 print('Complete')

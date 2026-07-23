@@ -127,13 +127,16 @@ class RocketPhysics:
         landed = False
 
         if self.pos[1] < 1.0:
-            on_pad = abs(self.pos[0] - self.landing_pad[0]) <= 1.0
+            on_pad = abs(self.pos[0] - self.landing_pad[0]) <= 0.6
             
-            soft_touchdown = abs(self.vel[1]) <= 0.4 and abs(self.angle) <= 0.3
+            soft_touchdown = abs(self.vel[1]) <= 0.35 and abs(self.angle) <= 0.35
 
             if on_pad and soft_touchdown:
                 landed = True
+                #print("Landed")
+
             else:
+                print("Crashed")
                 crashed = True
 
             self.landing_burn, self.landing = False, False

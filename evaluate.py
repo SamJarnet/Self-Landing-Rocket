@@ -3,9 +3,12 @@ import time
 from rocket_env import RocketEnv
 from agent import RocketNetwork
 
-# 1. Initialize environment with human render mode
+#### GEMINI MADE THIS CODE FOR EVALUATING THE TRAINED MODEL. IT RUNS THE ENVIRONMENT IN HUMAN RENDER MODE ####
 env = RocketEnv(render_mode="human")
 state_dim, action_dim = 6, 6
+
+# Force curriculum to max difficulty (full height and spread) for evaluation
+env.episode_count = 4500
 
 # 2. Load trained model weights
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

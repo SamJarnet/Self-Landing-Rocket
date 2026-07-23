@@ -1,8 +1,6 @@
 import torch
 import torch.nn as nn
-from rocket_env import RocketEnv
 
-env = RocketEnv()
 
 class RocketNetwork(nn.Module):
 
@@ -23,19 +21,3 @@ class RocketNetwork(nn.Module):
     def forward(self, x):
         return self.network(x)
     
-
-
-model = RocketNetwork(6,6)
-
-
-obs, info = env.reset()
-
-
-state = torch.tensor(obs, dtype=torch.float32)
-
-
-with torch.no_grad():
-    q_values = model(state)
-
-
-action = torch.argmax(q_values).item()
